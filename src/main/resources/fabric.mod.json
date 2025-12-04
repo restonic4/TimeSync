@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "timesync",
+  "version": "${version}",
+  "name": "TimeSync",
+  "description": "",
+  "authors": [
+    "restonic4"
+  ],
+  "contact": {
+    "repo": "https://github.com/restonic4/TimeSync"
+  },
+  "license": "MIT",
+  "icon": "assets/timesync/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "com.chaoticloom.timesync.client.TimeSyncClient"
+    ],
+    "main": [
+      "com.chaoticloom.timesync.TimeSync"
+    ]
+  },
+  "mixins": [
+    "timesync.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
