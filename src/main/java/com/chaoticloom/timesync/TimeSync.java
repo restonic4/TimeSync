@@ -1,6 +1,7 @@
 package com.chaoticloom.timesync;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -38,6 +39,10 @@ public class TimeSync implements ModInitializer {
     static Long cachedTimestamp = null;
     private static final String FILE_NAME = "TimeSync.txt";
 
+    // Rain / Thunder
+    private int tickCounter = 0;
+    private static final int INTERVAL = 6000; // 5 Minutes
+
     public static final boolean DEBUG = false;
     public static final long DEBUG_SECONDS_PER_DAY = 60000L;
 
@@ -62,6 +67,23 @@ public class TimeSync implements ModInitializer {
         });
 
         TabListManager.init();
+
+        ServerWorldEvents.LOAD.register((server, level) -> {
+            if (level.dimension() == net.minecraft.world.level.Level.OVERWORLD) {
+                System.out.println("World loaded. Syncing weather...");
+                WeatherService.updateWeather(level);
+            }
+        });
+
+        ServerTickEvents.END_WORLD_TICK.register(level -> {
+            if (level.dimension() == net.minecraft.world.level.Level.OVERWORLD) {
+                tickCounter++;
+                if (tickCounter >= INTERVAL) {
+                    tickCounter = 0;
+                    WeatherService.updateWeather(level);
+                }
+            }
+        });
     }
 
     /**

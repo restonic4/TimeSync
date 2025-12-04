@@ -9,17 +9,18 @@ import net.minecraft.server.level.ServerPlayer;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.Collections;
+import java.util.Locale;
 
 public class TabListManager {
-    // Formatter for: 22/12/2025 - 18:47:45
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy   -   HH:mm:ss");
-
-    // Standard width for the separator (approx 27 dashes)
     private static final int MIN_SEPARATOR_WIDTH = 27;
-
-    private static final int UPDATE_INTERVAL = 1;
+    private static final int UPDATE_INTERVAL = 20; // Updated to 20 (1 sec) to reduce packet spam, 1 tick is too fast for Tablist
     private static int tickCounter = 0;
+
+    // Spanish Locale for Day names (Lun, Mar, Mie...)
+    private static final Locale SPANISH = new Locale("es", "ES");
 
     public static void init() {
         ServerTickEvents.END_SERVER_TICK.register(TabListManager::onServerTick);
@@ -30,20 +31,17 @@ public class TabListManager {
         if (tickCounter < UPDATE_INTERVAL) return;
         tickCounter = 0;
 
-        // 1. Generate the complex Footer Component
         Component footer = buildFooter(server);
 
-        // 2. Define Header
-        // We calculate the width based on the footer content so the header separator matches too
+        // Calculate header width based on the widest line in the footer
         int estimatedWidth = footer.getString().lines()
                 .mapToInt(String::length)
                 .max()
                 .orElse(MIN_SEPARATOR_WIDTH);
 
-        MutableComponent header = Component.literal("§6§lEstado del mundo\n");
+        MutableComponent header = Component.literal("§6§lEstado del Mundo\n");
         header.append(getSeparator(estimatedWidth, false));
 
-        // 3. Send to all players
         ClientboundTabListPacket packet = new ClientboundTabListPacket(header, footer);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.connection.send(packet);
@@ -51,7 +49,7 @@ public class TabListManager {
     }
 
     private static Component buildFooter(MinecraftServer server) {
-        // --- DATA PREPARATION ---
+        // --- 1. BASIC DATA ---
         LocalDateTime now = LocalDateTime.now();
         String dateString = now.format(DATE_FORMAT);
         String season = getSeason(now.getMonthValue());
@@ -59,58 +57,128 @@ public class TabListManager {
         long totalTicks = server.overworld().getDayTime();
         long totalWorldDays = totalTicks / 24000L;
 
+        // --- 2. WEATHER DATA CONSTRUCTION ---
+        MutableComponent weatherLine1 = Component.empty();
+        MutableComponent weatherLine2 = Component.empty();
+
+        WeatherCache data = WeatherService.getCache();
+
+        if (data != null && data.current != null) {
+            // -- Current Weather Line --
+            // Format: "Actualmente: ⛈ Tormenta (18°C)" (Temp optional if you have it, here just code)
+            String currentIcon = getWeatherIcon(data.current.weather_code);
+            String currentName = getWeatherName(data.current.weather_code);
+            weatherLine1.append(Component.literal("§7Actual: " + currentIcon + " " + currentName));
+
+            // -- Forecast Line (Compact) --
+            // Format: "Lun ☀  Mar ☁  Mie 🌧"
+            // We look ahead 24, 48, and 72 hours index positions
+            if (data.hourly != null && !data.hourly.weather_code.isEmpty()) {
+                weatherLine2.append(Component.literal("§8Pronóstico: §f"));
+
+                // We start getting the index for "Tomorrow same time"
+                // This is a rough approximation based on the API list.
+                // A safer way is checking the time string, but fixed index jumps work for cache lists usually.
+                int currentHourIndex = LocalDateTime.now().getHour(); // 0-23
+
+                // Get next 3 days
+                for (int i = 1; i <= 3; i++) {
+                    int targetIndex = currentHourIndex + (i * 24); // Jump 24 hours ahead
+
+                    if (targetIndex < data.hourly.weather_code.size()) {
+                        int code = data.hourly.weather_code.get(targetIndex);
+                        String dayName = now.plusDays(i).getDayOfWeek().getDisplayName(TextStyle.SHORT, SPANISH);
+
+                        weatherLine2.append(Component.literal(dayName + " " + getWeatherIcon(code) + "  "));
+                    }
+                }
+            }
+        } else {
+            weatherLine1.append(Component.literal("§8Sincronizando clima..."));
+        }
+
+        // --- 3. WORLD AGE CALCULATION ---
         long calcYears = totalWorldDays / 365;
         long remainingDaysAfterYear = totalWorldDays % 365;
         long calcMonths = remainingDaysAfterYear / 30;
         long calcDays = remainingDaysAfterYear % 30;
 
-        // --- COMPONENT CONSTRUCTION ---
+        MutableComponent ageLine = Component.literal("§7Día: §e" + totalWorldDays + "   §7-   ");
+        ageLine.append(formatDuration(calcYears, calcMonths, calcDays));
 
-        // 1. Create the Bottom Line FIRST to measure it
-        MutableComponent bottomLine = Component.literal("§7Día: §e" + totalWorldDays + "   §7-   ");
-        bottomLine.append(formatDuration(calcYears, calcMonths, calcDays));
+        // --- 4. WIDTH CALCULATION ---
+        // We must check the width of ALL lines to ensure the separator is wide enough
+        int maxLen = Math.max(ageLine.getString().length(), dateString.length());
+        maxLen = Math.max(maxLen, weatherLine1.getString().length());
+        maxLen = Math.max(maxLen, weatherLine2.getString().length());
 
-        // 2. Calculate Width
-        // .getString() returns the raw text without color codes, allowing accurate length measurement
-        int bottomLineLength = bottomLine.getString().length();
+        int separatorWidth = Math.max(MIN_SEPARATOR_WIDTH, maxLen + 2);
 
-        // Add a small buffer (+2 or +4) so the line extends slightly past the text
-        int separatorWidth = Math.max(MIN_SEPARATOR_WIDTH, bottomLineLength + 2);
-
-        // 3. Assemble the full Footer
+        // --- 5. ASSEMBLE FOOTER ---
         MutableComponent footer = Component.empty();
 
         // Top Separator
         footer.append(getSeparator(separatorWidth, true));
 
-        // Date & Season
+        // Real Time
         footer.append(Component.literal("§7" + dateString + "\n"));
         footer.append(Component.literal("§b" + season + "\n"));
 
-        // Middle Separator (Dynamic Length)
+        // Weather Section (Only if data exists)
+        if (data != null) {
+            footer.append(Component.literal("\n")); // Small spacer
+            footer.append(weatherLine1).append(Component.literal("\n"));
+            footer.append(weatherLine2).append(Component.literal("\n"));
+        } else {
+            footer.append(Component.literal("\n§8(Buscando satélites...)\n"));
+        }
+
+        // Middle Separator
         footer.append(getSeparator(separatorWidth, true));
 
-        // Bottom Line (Day & Duration)
-        footer.append(bottomLine);
+        // World Age
+        footer.append(ageLine);
 
         return footer;
     }
 
+    // --- HELPER METHODS ---
+
     /**
-     * Generates a separator line of hyphens based on the target width.
+     * Returns a pretty Unicode icon + Color code for WMO codes.
      */
+    private static String getWeatherIcon(int code) {
+        // Colors: e=yellow, 7=gray, b=aqua, 9=blue, 8=dark gray
+        if (code <= 3) return "§e☀"; // Clear
+        if (code <= 48) return "§7☁"; // Fog/Cloudy
+        if (code <= 67) return "§b🌧"; // Rain
+        if (code <= 77) return "§f❄"; // Snow
+        if (code <= 82) return "§9☔"; // Heavy Rain
+        if (code <= 86) return "§f🌨"; // Snow Showers
+        if (code <= 99) return "§5⛈"; // Thunderstorm
+        return "§7?";
+    }
+
+    /**
+     * Returns a short friendly name for the weather.
+     */
+    private static String getWeatherName(int code) {
+        if (code == 0) return "Despejado";
+        if (code <= 3) return "Nublado";
+        if (code <= 48) return "Niebla";
+        if (code <= 65) return "Lluvia";
+        if (code <= 77) return "Nieve";
+        if (code <= 82) return "Lluvia Fuerte";
+        if (code <= 86) return "Nevada";
+        if (code <= 99) return "Tormenta";
+        return "Desconocido";
+    }
+
     private static Component getSeparator(int targetWidth, boolean newLine) {
-        // Ensure we never go below the minimum aesthetic width
         int finalWidth = Math.max(MIN_SEPARATOR_WIDTH, targetWidth);
-
-        // Create the string of dashes
         String dashes = String.join("", Collections.nCopies(finalWidth, "-"));
-
         String text = "§f" + dashes;
-        if (newLine) {
-            text += "\n";
-        }
-
+        if (newLine) text += "\n";
         return Component.literal(text);
     }
 
@@ -125,25 +193,19 @@ public class TabListManager {
     }
 
     private static Component formatDuration(long years, long months, long days) {
-        StringBuilder sb = new StringBuilder("§e"); // Start with Yellow color
-
+        StringBuilder sb = new StringBuilder("§e");
         boolean hasYears = years > 0;
         boolean hasMonths = months > 0;
 
-        if (hasYears) {
-            sb.append(years).append(years == 1 ? " año" : " años");
-        }
-
+        if (hasYears) sb.append(years).append(years == 1 ? " año" : " años");
         if (hasMonths) {
             if (hasYears) sb.append(", ");
             sb.append(months).append(months == 1 ? " mes" : " meses");
         }
-
         if (days > 0 || (!hasYears && !hasMonths)) {
             if (hasYears || hasMonths) sb.append(" y ");
             sb.append(days).append(days == 1 ? " día" : " dias");
         }
-
         return Component.literal(sb.toString());
     }
 }
