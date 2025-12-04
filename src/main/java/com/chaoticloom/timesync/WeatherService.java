@@ -91,21 +91,13 @@ public class WeatherService {
         // Run on main thread to be safe
         level.getServer().execute(() -> {
             int duration = 18000; // 15 minutes in ticks
+            WeatherState weatherState = WeatherState.fromCode(wmoCode);
 
-            // WMO Code Mapping
-            // 0-3: Clear
-            // 51-67, 80-82: Rain
-            // 71-77, 85-86: Snow (Handled as Rain in MC unless biome is cold)
-            // 95-99: Thunderstorm
-
-            if (wmoCode >= 95) {
-                // Thunder
+            if (weatherState == WeatherState.THUNDERSTORM) {
                 level.setWeatherParameters(0, duration, true, true);
-            } else if ((wmoCode >= 51 && wmoCode <= 86)) {
-                // Rain
+            } else if (weatherState == WeatherState.RAINING || weatherState == WeatherState.SNOWING) {
                 level.setWeatherParameters(0, duration, true, false);
-            } else {
-                // Clear
+            } else if (weatherState == WeatherState.CLEAR || weatherState == WeatherState.CLOUDY || weatherState == WeatherState.FOG ) {
                 level.setWeatherParameters(duration, 0, false, false);
             }
         });

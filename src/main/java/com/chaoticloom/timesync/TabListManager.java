@@ -149,13 +149,20 @@ public class TabListManager {
      */
     private static String getWeatherIcon(int code) {
         // Colors: e=yellow, 7=gray, b=aqua, 9=blue, 8=dark gray
-        if (code <= 3) return "§e☀"; // Clear
-        if (code <= 48) return "§7☁"; // Fog/Cloudy
-        if (code <= 67) return "§b🌧"; // Rain
-        if (code <= 77) return "§f❄"; // Snow
-        if (code <= 82) return "§9☔"; // Heavy Rain
-        if (code <= 86) return "§f🌨"; // Snow Showers
-        if (code <= 99) return "§5⛈"; // Thunderstorm
+        WeatherState weatherState = WeatherState.fromCode(code);
+        WeatherStateStrength weatherStateStrength = WeatherStateStrength.fromCode(code);
+
+        if (weatherState == WeatherState.CLEAR) return "§e☀";
+        if (weatherState == WeatherState.CLOUDY) return "§7☁";
+        if (weatherState == WeatherState.FOG) return "§7🌫";
+        if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.SLIGHT) return "§b🌦";
+        if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.MODERATE) return "§b🌧";
+        if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.INTENSE) return "§9☔";
+        if (weatherState == WeatherState.SNOWING && weatherStateStrength == WeatherStateStrength.SLIGHT) return "§f❅";
+        if (weatherState == WeatherState.SNOWING && weatherStateStrength == WeatherStateStrength.MODERATE) return "§f❄";
+        if (weatherState == WeatherState.SNOWING && weatherStateStrength == WeatherStateStrength.INTENSE) return "§f🌨";
+        if (weatherState == WeatherState.THUNDERSTORM && weatherStateStrength == WeatherStateStrength.SLIGHT) return "§5⛈";
+        if (weatherState == WeatherState.THUNDERSTORM && weatherStateStrength == WeatherStateStrength.INTENSE) return "§5⛈";
         return "§7?";
     }
 
@@ -163,14 +170,20 @@ public class TabListManager {
      * Returns a short friendly name for the weather.
      */
     private static String getWeatherName(int code) {
-        if (code == 0) return "Despejado";
-        if (code <= 3) return "Nublado";
-        if (code <= 48) return "Niebla";
-        if (code <= 65) return "Lluvia";
-        if (code <= 77) return "Nieve";
-        if (code <= 82) return "Lluvia Fuerte";
-        if (code <= 86) return "Nevada";
-        if (code <= 99) return "Tormenta";
+        WeatherState weatherState = WeatherState.fromCode(code);
+        WeatherStateStrength weatherStateStrength = WeatherStateStrength.fromCode(code);
+
+        if (weatherState == WeatherState.CLEAR) return "Despejado";
+        if (weatherState == WeatherState.CLOUDY) return "Nublado";
+        if (weatherState == WeatherState.FOG) return "Niebla";
+        if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.SLIGHT) return "Llovizna";
+        if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.MODERATE) return "Lluvia";
+        if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.INTENSE) return "Lluvia Fuerte";
+        if (weatherState == WeatherState.SNOWING && weatherStateStrength == WeatherStateStrength.SLIGHT) return "Nieve Leve";
+        if (weatherState == WeatherState.SNOWING && weatherStateStrength == WeatherStateStrength.MODERATE) return "Nieve";
+        if (weatherState == WeatherState.SNOWING && weatherStateStrength == WeatherStateStrength.INTENSE) return "Nevada Fuerte";
+        if (weatherState == WeatherState.THUNDERSTORM && weatherStateStrength == WeatherStateStrength.SLIGHT) return "Tormenta";
+        if (weatherState == WeatherState.THUNDERSTORM && weatherStateStrength == WeatherStateStrength.INTENSE) return "Tormenta Fuerte";
         return "Desconocido";
     }
 
