@@ -7,7 +7,9 @@
     "ServerLevelMixin"
   ],
   "client": [
-    "ClientLevelMixin"
+    "ClientLevelMixin",
+    "GuiMixin",
+    "PlayerTabOverlayMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -10,6 +10,6 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 public class ClientLevelMixin {
     @Redirect(method = "tickTime", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/multiplayer/ClientLevel;setDayTime(J)V"))
     private void syncTimeWithRealWorld(ClientLevel clientLevel, long newValue) {
-        clientLevel.setDayTime(TimeSync.getCurrentTime());
+        clientLevel.setDayTime(TimeSync.getSyncedTime(clientLevel));
     }
 }

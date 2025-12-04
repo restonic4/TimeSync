@@ -1,7 +1,15 @@
 package com.chaoticloom.timesync;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.LevelResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,66 +17,93 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 /**
  * This mod syncs the Minecraft day/night cycle with real time.
  *
  * We create a file per world creation which stores the creation timestamp.
  * This allows us to calculate how many days has passed since creation, since we simulate the day/night cycle.
- *
- * TODO: IMPLEMENT DAYS, right now the day count resets each real life day, which is bad. We store the timestamp to implement this, and, we also should consider multiple scenarios: 1: (The player being online at the world before starting a new day, and then becoming a new day), 2: (The player not being online, the world/server is closed, its stopped the day before and openned a few or 1 day after)
- */
+ * */
 public class TimeSync implements ModInitializer {
     public static final String MOD_ID = "timesync";
     public static final String MOD_NAME = "Time Sync";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-    private static Long cachedTimestamp = null;
+    public static final ResourceLocation SYNC_PACKET_ID = new ResourceLocation(MOD_ID, "sync_timestamp");
+
+    static Long cachedTimestamp = null;
     private static final String FILE_NAME = "TimeSync.txt";
 
-    public static final boolean DEBUG = true;
+    public static final boolean DEBUG = false;
+    public static final long DEBUG_SECONDS_PER_DAY = 60000L;
 
     @Override
     public void onInitialize() {
         LOGGER.info(MOD_NAME + " Mod Initialized.");
+
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            ServerLevel level = server.overworld();
+            long timestamp = getWorldCreationTimestamp(level);
+
+            // Create packet
+            FriendlyByteBuf buf = PacketByteBufs.create();
+            buf.writeLong(timestamp);
+
+            // Send to the specific player
+            ServerPlayNetworking.send(handler.getPlayer(), SYNC_PACKET_ID, buf);
+        });
+
+        ServerWorldEvents.UNLOAD.register((minecraftServer, serverLevel) -> {
+            cachedTimestamp = null;
+        });
+
+        TabListManager.init();
     }
 
     /**
-     * Gets the day progress (0..1) of real world.
-     * @return Number between 0 and 1.
+     * Calculates the total Minecraft time (ticks) based on real-world elapsed time.
+     * This handles day rollovers and offline time-skips automatically.
+     * * Logic:
+     * Real 06:00 AM = MC Tick 0 (Sunrise).
+     * We find the 06:00 AM anchor of the creation date and count ticks from there.
      */
-    public static double getRealDayProgress() {
+    public static long getSyncedTime(Level level) {
         if (DEBUG) {
-            long ms = System.currentTimeMillis() % 10_000;
-            return ms / 10_000.0;
+            // Debug: Fast cycle to test transitions (10 seconds = 1 day)
+            return (System.currentTimeMillis() / DEBUG_SECONDS_PER_DAY) * 24000L + (long)((System.currentTimeMillis() % (int) DEBUG_SECONDS_PER_DAY) / (double) DEBUG_SECONDS_PER_DAY * 24000);
         }
 
-        LocalTime now = LocalTime.now();
-        int totalSecondsOfDay = now.toSecondOfDay(); // 0 to 86399
-        return totalSecondsOfDay / 86400.0;
+        long creationMillis = getWorldCreationTimestamp(level);
+        long nowMillis = System.currentTimeMillis();
+
+        // Calculate the Anchor: 06:00 AM on the day of creation
+        long anchor6AM = getSixAmAnchor(creationMillis);
+
+        // Calculate elapsed time since that 6 AM anchor
+        long elapsedMillis = nowMillis - anchor6AM;
+        if (elapsedMillis < 0) elapsedMillis = 0;
+
+        // Convert to Ticks.
+        // 1 Real Day (86,400,000 ms) = 24,000 MC Ticks
+        // Ratio = 3,600 ms per 1 Tick.
+        return elapsedMillis / 3600L;
     }
 
     /**
-     * Gets the current minecraft tick time based on the real world time.
-     * Minecraft Day: 24000 ticks.
-     * Real Day: 86400 seconds.
-     * @return The ticks.
+     * returns the epoch millis of 06:00 AM on the day of the provided timestamp.
      */
-    public static long getCurrentTime() {
-        // Calculate progress through the real day (0.0 to 1.0)
-        double dayProgress = getRealDayProgress();
+    private static long getSixAmAnchor(long timestamp) {
+        Instant instant = Instant.ofEpochMilli(timestamp);
+        ZonedDateTime zdt = instant.atZone(ZoneId.systemDefault());
 
-        // Convert to Minecraft ticks (0 to 24000)
-        long targetTick = (long) (dayProgress * 24000L);
+        // Snap to 6:00 AM of that specific date
+        ZonedDateTime sixAm = zdt.toLocalDate().atTime(6, 0).atZone(ZoneId.systemDefault());
 
-        // Apply Offset
-        long syncedTime = targetTick - 6000L;
-        if (syncedTime < 0) {
-            syncedTime += 24000L;
-        }
-
-        return syncedTime;
+        return sixAm.toInstant().toEpochMilli();
     }
 
     /** Returns per-world TimeSync file path */
@@ -100,23 +135,32 @@ public class TimeSync implements ModInitializer {
      * Return the stored timestamp as a number.
      * First call will read the file -> later calls use cached value.
      */
-    public static long getWorldCreationTimestamp(ServerLevel level) {
+    public static long getWorldCreationTimestamp(Level level) {
         if (cachedTimestamp != null) {
             return cachedTimestamp;
         }
 
-        Path file = getFilePath(level);
-        try {
-            if (Files.exists(file)) {
-                String content = Files.readString(file).trim();
-                cachedTimestamp = Long.parseLong(content);
-            } else {
-                ensureFile(level); // file missing, recreate
+        // Gets the world time depending on the networking side
+        if (level instanceof ClientLevel clientLevel) {
+            // We return -1 if the packet hasn't arrived yet.
+            // The Client Packet Handler will update cachedTimestamp automatically.
+            return -1;
+        } else if (level instanceof ServerLevel serverLevel) {
+            Path file = getFilePath(serverLevel);
+            try {
+                if (Files.exists(file)) {
+                    String content = Files.readString(file).trim();
+                    cachedTimestamp = Long.parseLong(content);
+                } else {
+                    ensureFile(serverLevel); // file missing, recreate
+                }
+                return cachedTimestamp;
+            } catch (IOException | NumberFormatException e) {
+                LOGGER.error("Error: ", e);
+                return -1; // indicate error
             }
-            return cachedTimestamp;
-        } catch (IOException | NumberFormatException e) {
-            LOGGER.error("Error: ", e);
-            return -1; // indicate error
         }
+
+        return -1;
     }
 }

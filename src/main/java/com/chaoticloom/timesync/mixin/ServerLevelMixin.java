@@ -12,10 +12,6 @@ import java.time.LocalTime;
 public abstract class ServerLevelMixin {
     @Redirect(method = "tickTime", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;setDayTime(J)V"))
     private void syncTimeWithRealWorld(ServerLevel serverLevel, long newValue) {
-        long syncedTime = TimeSync.getCurrentTime();
-        double dayProgress = TimeSync.getRealDayProgress();
-
-        System.out.println(dayProgress + " -> " + syncedTime);
-        serverLevel.setDayTime(syncedTime);
+        serverLevel.setDayTime(TimeSync.getSyncedTime(serverLevel));
     }
 }
