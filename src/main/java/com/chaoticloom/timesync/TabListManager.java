@@ -153,7 +153,9 @@ public class TabListManager {
         WeatherStateStrength weatherStateStrength = WeatherStateStrength.fromCode(code);
 
         if (weatherState == WeatherState.CLEAR) return "§e☀";
-        if (weatherState == WeatherState.CLOUDY) return "§7☁";
+        if (weatherState == WeatherState.CLOUDY && weatherStateStrength == WeatherStateStrength.SLIGHT) return "§7⛅";
+        if (weatherState == WeatherState.CLOUDY && weatherStateStrength == WeatherStateStrength.MODERATE) return "§7⛅";
+        if (weatherState == WeatherState.CLOUDY && weatherStateStrength == WeatherStateStrength.INTENSE) return "§7☁";
         if (weatherState == WeatherState.FOG) return "§7🌫";
         if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.SLIGHT) return "§b🌦";
         if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.MODERATE) return "§b🌧";
@@ -174,7 +176,9 @@ public class TabListManager {
         WeatherStateStrength weatherStateStrength = WeatherStateStrength.fromCode(code);
 
         if (weatherState == WeatherState.CLEAR) return "Despejado";
-        if (weatherState == WeatherState.CLOUDY) return "Nublado";
+        if (weatherState == WeatherState.CLOUDY && weatherStateStrength == WeatherStateStrength.SLIGHT) return "Poco Nublado";
+        if (weatherState == WeatherState.CLOUDY && weatherStateStrength == WeatherStateStrength.MODERATE) return "Nublado";
+        if (weatherState == WeatherState.CLOUDY && weatherStateStrength == WeatherStateStrength.INTENSE) return "Muy Nublado";
         if (weatherState == WeatherState.FOG) return "Niebla";
         if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.SLIGHT) return "Llovizna";
         if (weatherState == WeatherState.RAINING && weatherStateStrength == WeatherStateStrength.MODERATE) return "Lluvia";
