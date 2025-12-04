@@ -4,8 +4,10 @@
   "package": "com.chaoticloom.timesync.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "ServerLevelMixin"
   ],
   "client": [
+    "ClientLevelMixin"
   ],
   "injectors": {
     "defaultRequire": 1

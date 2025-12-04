@@ -15,7 +15,7 @@
   "environment": "*",
   "entrypoints": {
     "client": [
-      "com.chaoticloom.timesync.client.TimeSyncClient"
+
     ],
     "main": [
       "com.chaoticloom.timesync.TimeSync"
