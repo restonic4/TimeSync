@@ -10,8 +10,7 @@ import net.minecraft.server.level.ServerPlayer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
-import java.util.Collections;
-import java.util.Locale;
+import java.util.*;
 
 public class TabListManager {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yyyy   -   HH:mm:ss");
@@ -58,46 +57,64 @@ public class TabListManager {
         long totalWorldDays = totalTicks / 24000L;
 
         // --- 2. WEATHER DATA CONSTRUCTION ---
-        MutableComponent weatherLine1 = Component.empty();
-        MutableComponent weatherLine2 = Component.empty();
-
         WeatherCache data = WeatherService.getCache();
 
+        MutableComponent weatherLineCurrent = Component.empty();
+        MutableComponent timelineHours = Component.empty();
+        MutableComponent timelineIcons = Component.empty();
+        MutableComponent weatherForecast = Component.empty();
+
         if (data != null && data.current != null) {
-            // -- Current Weather Line --
-            // Format: "Actualmente: ⛈ Tormenta (18°C)" (Temp optional if you have it, here just code)
+            // A. Current Header
             String currentIcon = getWeatherIcon(data.current.weather_code);
             String currentName = getWeatherName(data.current.weather_code);
-            weatherLine1.append(Component.literal("§7Actual: " + currentIcon + " " + currentName));
+            weatherLineCurrent.append(Component.literal("§7Actual: " + currentIcon + " " + currentName));
 
-            // -- Forecast Line (Compact) --
-            // Format: "Lun ☀  Mar ☁  Mie 🌧"
-            // We look ahead 24, 48, and 72 hours index positions
+            // B. Hourly Strip (The 2-Row Timeline)
             if (data.hourly != null && !data.hourly.weather_code.isEmpty()) {
-                weatherLine2.append(Component.literal("§8Pronóstico: §f"));
+                // Label for the top row
+                timelineHours.append(Component.literal("§8Horas: §7"));
+                // Spacer for the bottom row to match "Horas: " width (approx 7 spaces)
+                timelineIcons.append(Component.literal("       "));
 
-                // We start getting the index for "Tomorrow same time"
-                // This is a rough approximation based on the API list.
-                // A safer way is checking the time string, but fixed index jumps work for cache lists usually.
-                int currentHourIndex = LocalDateTime.now().getHour(); // 0-23
+                int currentHour = now.getHour();
 
-                // Get next 3 days
-                for (int i = 1; i <= 3; i++) {
-                    int targetIndex = currentHourIndex + (i * 24); // Jump 24 hours ahead
+                // Loop 0 to 23 with a step of 3 to fit tablist width
+                for (int h = 0; h < 24; h += 3) {
+                    if (h < data.hourly.weather_code.size()) {
+                        int code = data.hourly.weather_code.get(h);
 
-                    if (targetIndex < data.hourly.weather_code.size()) {
-                        int code = data.hourly.weather_code.get(targetIndex);
-                        String dayName = now.plusDays(i).getDayOfWeek().getDisplayName(TextStyle.SHORT, SPANISH);
+                        // Highlight the column closest to current time in Gold
+                        boolean isNow = (Math.abs(currentHour - h) <= 1);
+                        String color = isNow ? "§6" : "§7";
 
-                        weatherLine2.append(Component.literal(dayName + " " + getWeatherIcon(code) + "  "));
+                        // Top Row: Numbers (e.g. "09")
+                        timelineHours.append(Component.literal(color + String.format("%02d", h) + "  "));
+
+                        // Bottom Row: Icons (e.g. "☁")
+                        timelineIcons.append(Component.literal(getWeatherIcon(code) + "  "));
                     }
                 }
             }
+
+            // C. Forecast (Next 3 Days - Weighted)
+            if (data.hourly != null) {
+                weatherForecast.append(Component.literal("§8Pronóstico: §f"));
+                for (int dayOffset = 1; dayOffset <= 3; dayOffset++) {
+                    int startHourIndex = dayOffset * 24;
+                    int representativeCode = calculateDailyForecast(data.hourly.weather_code, startHourIndex);
+
+                    String dayName = now.plusDays(dayOffset).getDayOfWeek().getDisplayName(TextStyle.SHORT, SPANISH);
+                    dayName = dayName.substring(0, 1).toUpperCase() + dayName.substring(1);
+
+                    weatherForecast.append(Component.literal(dayName + " " + getWeatherIcon(representativeCode) + "  "));
+                }
+            }
         } else {
-            weatherLine1.append(Component.literal("§8Sincronizando clima..."));
+            weatherLineCurrent.append(Component.literal("§8Sincronizando clima..."));
         }
 
-        // --- 3. WORLD AGE CALCULATION ---
+        // --- 3. WORLD AGE ---
         long calcYears = totalWorldDays / 365;
         long remainingDaysAfterYear = totalWorldDays % 365;
         long calcMonths = remainingDaysAfterYear / 30;
@@ -107,39 +124,94 @@ public class TabListManager {
         ageLine.append(formatDuration(calcYears, calcMonths, calcDays));
 
         // --- 4. WIDTH CALCULATION ---
-        // We must check the width of ALL lines to ensure the separator is wide enough
         int maxLen = Math.max(ageLine.getString().length(), dateString.length());
-        maxLen = Math.max(maxLen, weatherLine1.getString().length());
-        maxLen = Math.max(maxLen, weatherLine2.getString().length());
+        maxLen = Math.max(maxLen, weatherLineCurrent.getString().length());
+        // Check the new timeline width
+        maxLen = Math.max(maxLen, timelineHours.getString().length());
+        maxLen = Math.max(maxLen, weatherForecast.getString().length());
 
         int separatorWidth = Math.max(MIN_SEPARATOR_WIDTH, maxLen + 2);
 
         // --- 5. ASSEMBLE FOOTER ---
         MutableComponent footer = Component.empty();
 
-        // Top Separator
         footer.append(getSeparator(separatorWidth, true));
-
-        // Real Time
         footer.append(Component.literal("§7" + dateString + "\n"));
         footer.append(Component.literal("§b" + season + "\n"));
 
-        // Weather Section (Only if data exists)
         if (data != null) {
-            footer.append(Component.literal("\n")); // Small spacer
-            footer.append(weatherLine1).append(Component.literal("\n"));
-            footer.append(weatherLine2).append(Component.literal("\n"));
+            footer.append(Component.literal("\n"));
+
+            // Current Weather
+            footer.append(weatherLineCurrent).append(Component.literal("\n\n"));
+
+            // The Timeline Strip
+            footer.append(timelineHours).append(Component.literal("\n"));
+            footer.append(timelineIcons).append(Component.literal("\n\n"));
+
+            // Future Forecast
+            footer.append(weatherForecast).append(Component.literal("\n"));
         } else {
             footer.append(Component.literal("\n§8(Buscando satélites...)\n"));
         }
 
-        // Middle Separator
         footer.append(getSeparator(separatorWidth, true));
-
-        // World Age
         footer.append(ageLine);
 
         return footer;
+    }
+
+    // --- ALGORITHM FOR WEIGHTED FORECAST ---
+
+    /**
+     * Scans 24 hours of data and returns the code that has the highest accumulated "Severity Score".
+     */
+    private static int calculateDailyForecast(List<Integer> hourlyCodes, int startIndex) {
+        Map<Integer, Integer> scoreMap = new HashMap<>();
+
+        // Loop through 24 hours (or less if end of list)
+        for (int i = 0; i < 24; i++) {
+            int index = startIndex + i;
+            if (index >= hourlyCodes.size()) break;
+
+            int code = hourlyCodes.get(index);
+            int weight = getWeatherWeight(code);
+
+            // Add the weight to this specific code's total score
+            scoreMap.put(code, scoreMap.getOrDefault(code, 0) + weight);
+        }
+
+        // Find the code with the highest score
+        return scoreMap.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(0); // Default to clear sky if error
+    }
+
+    /**
+     * Assigns a "Severity Score" to weather codes.
+     * Higher score = This weather takes priority in the forecast.
+     */
+    private static int getWeatherWeight(int code) {
+        WeatherState state = WeatherState.fromCode(code);
+        WeatherStateStrength strength = WeatherStateStrength.fromCode(code);
+
+        // 1. DANGEROUS / EXTREME (Highest Priority)
+        if (state == WeatherState.THUNDERSTORM) return 50;
+        if (state == WeatherState.SNOWING && strength == WeatherStateStrength.INTENSE) return 40;
+        if (state == WeatherState.RAINING && strength == WeatherStateStrength.INTENSE) return 35;
+
+        // 2. BAD WEATHER
+        if (state == WeatherState.SNOWING) return 20;
+        if (state == WeatherState.RAINING) return 15;
+
+        // 3. CLOUDY
+        if (state == WeatherState.CLOUDY && strength == WeatherStateStrength.INTENSE) return 5;
+        if (state == WeatherState.CLOUDY) return 3;
+        if (state == WeatherState.FOG) return 2;
+
+        // 4. CLEAR (Lowest Priority)
+        return 1;
     }
 
     // --- HELPER METHODS ---
