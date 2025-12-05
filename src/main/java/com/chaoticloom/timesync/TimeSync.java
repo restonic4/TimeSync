@@ -43,7 +43,7 @@ public class TimeSync implements ModInitializer {
 
     // Rain / Thunder
     private int tickCounter = 0;
-    private static final int INTERVAL = 6000; // 5 Minutes
+    private static final int INTERVAL = 2400; // 2 Minutes
 
     public static final boolean DEBUG = false;
     public static final long DEBUG_SECONDS_PER_DAY = 60000L;
