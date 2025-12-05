@@ -23,6 +23,8 @@ public class TimeSyncClient implements ClientModInitializer {
                 client.execute(() -> {
                     TimeSync.cachedTimestamp = null;
                 });
+            } else {
+                ClientWeatherController.tick();
             }
         });
     }

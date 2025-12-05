@@ -8,7 +8,9 @@
   ],
   "client": [
     "ClientLevelMixin",
+    "FogRendererMixin",
     "GuiMixin",
+    "LevelRendererMixin",
     "PlayerTabOverlayMixin"
   ],
   "injectors": {

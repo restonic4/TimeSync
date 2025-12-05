@@ -93,6 +93,7 @@ public class WeatherService {
         level.getServer().execute(() -> {
             int duration = 18000; // 15 minutes in ticks
             WeatherState weatherState = WeatherState.fromCode(wmoCode);
+            WeatherStateStrength weatherStateStrength = WeatherStateStrength.fromCode(wmoCode);
 
             if (weatherState == WeatherState.THUNDERSTORM) {
                 level.setWeatherParameters(0, duration, true, true);
@@ -100,6 +101,21 @@ public class WeatherService {
                 level.setWeatherParameters(0, duration, true, false);
             } else if (weatherState == WeatherState.CLEAR || weatherState == WeatherState.CLOUDY || weatherState == WeatherState.FOG ) {
                 level.setWeatherParameters(duration, 0, false, false);
+            }
+
+            if (weatherState == WeatherState.CLOUDY) {
+                float amount = 0;
+                if (weatherStateStrength == WeatherStateStrength.SLIGHT) {
+                    amount = 0.35f;
+                } else if (weatherStateStrength == WeatherStateStrength.MODERATE) {
+                    amount = 0.5f;
+                } else if (weatherStateStrength == WeatherStateStrength.INTENSE) {
+                    amount = 1f;
+                }
+
+                ClientWeatherController.setCloudiness(amount);
+            } else {
+                ClientWeatherController.setCloudiness(0);
             }
         });
     }
