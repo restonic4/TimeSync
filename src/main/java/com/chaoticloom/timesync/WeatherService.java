@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.CompletableFuture;
 
+//https://open-meteo.com/en/docs?latitude=37.3279072&longitude=-5.9400771&timezone=Europe%2FLondon&hourly=weather_code
 public class WeatherService {
     private static final Gson GSON = new Gson();
     private static final String API_URL = "https://api.open-meteo.com/v1/forecast?latitude=37.3279072&longitude=-5.9400771&current=weather_code&hourly=weather_code&forecast_days=16";

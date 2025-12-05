@@ -72,24 +72,22 @@ public class TabListManager {
 
             // B. Hourly Strip (The 2-Row Timeline)
             if (data.hourly != null && !data.hourly.weather_code.isEmpty()) {
-                // Label for the top row
-                timelineHours.append(Component.literal("§8Horas: §7"));
                 // Spacer for the bottom row to match "Horas: " width (approx 7 spaces)
-                timelineIcons.append(Component.literal("       "));
+                timelineIcons.append(Component.literal(""));
 
                 int currentHour = now.getHour();
 
-                // Loop 0 to 23 with a step of 3 to fit tablist width
-                for (int h = 0; h < 24; h += 3) {
+                // Loop 0 to 23 with a step of 1 to fit tablist width
+                for (int h = 0; h < 24; h += 1) {
                     if (h < data.hourly.weather_code.size()) {
                         int code = data.hourly.weather_code.get(h);
 
                         // Highlight the column closest to current time in Gold
-                        boolean isNow = (Math.abs(currentHour - h) <= 1);
+                        boolean isNow = (h == currentHour);
                         String color = isNow ? "§6" : "§7";
 
                         // Top Row: Numbers (e.g. "09")
-                        timelineHours.append(Component.literal(color + String.format("%02d", h) + "  "));
+                        timelineHours.append(Component.literal(color + String.format("%02d", h) + " "));
 
                         // Bottom Row: Icons (e.g. "☁")
                         timelineIcons.append(Component.literal(getWeatherIcon(code) + "  "));
