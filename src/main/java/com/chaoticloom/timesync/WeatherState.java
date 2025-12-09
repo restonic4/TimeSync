@@ -18,7 +18,7 @@ package com.chaoticloom.timesync;
 public enum WeatherState {
     CLEAR(0),
     CLOUDY(1, 2, 3),
-    FOG(45, 48),
+    FOG(45, 48), // TODO
     RAINING(51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82),
     SNOWING(71, 73, 75, 77, 85, 86),
     THUNDERSTORM(95, 96, 99);

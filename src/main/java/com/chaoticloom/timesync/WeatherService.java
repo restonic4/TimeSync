@@ -166,4 +166,8 @@ public class WeatherService {
     public static WeatherCache getCache() {
         return cachedData;
     }
+
+    public static int getWMO() {
+        return getCurrentCodeFromCache();
+    }
 }
