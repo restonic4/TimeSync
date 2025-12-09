@@ -30,7 +30,6 @@ import java.time.ZonedDateTime;
  * This allows us to calculate how many days has passed since creation, since we simulate the day/night cycle.
  * */
 
-// TODO: IMPROVE TABLIST 3 DAY PREDICTION, IT LOOKS AT THE CURRENT HOUR AND ADS 24, THATS BAD PREDICTION
 public class TimeSync implements ModInitializer {
     public static final String MOD_ID = "timesync";
     public static final String MOD_NAME = "Time Sync";
