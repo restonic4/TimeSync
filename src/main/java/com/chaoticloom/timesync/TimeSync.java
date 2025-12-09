@@ -89,32 +89,54 @@ public class TimeSync implements ModInitializer {
     }
 
     /**
-     * Calculates the total Minecraft time (ticks) based on real-world elapsed time.
-     * This handles day rollovers and offline time-skips automatically.
-     * * Logic:
-     * Real 06:00 AM = MC Tick 0 (Sunrise).
-     * We find the 06:00 AM anchor of the creation date and count ticks from there.
+     * Calculates the total Minecraft time (ticks).
+     * * Strategy:
+     * 1. Calculate how many full days have passed since creation (for the day counter).
+     * 2. Calculate how much time has passed since 6:00 AM *TODAY* (for the time of day).
+     * * This fixes the +1 Hour / DST bug by recalculating the 6:00 AM anchor every single day.
      */
     public static long getSyncedTime(Level level) {
         if (DEBUG) {
-            // Debug: Fast cycle to test transitions (10 seconds = 1 day)
             return (System.currentTimeMillis() / DEBUG_SECONDS_PER_DAY) * 24000L + (long)((System.currentTimeMillis() % (int) DEBUG_SECONDS_PER_DAY) / (double) DEBUG_SECONDS_PER_DAY * 24000);
         }
 
         long creationMillis = getWorldCreationTimestamp(level);
+        if (creationMillis == -1) return level.getDayTime(); // Not synced yet
+
         long nowMillis = System.currentTimeMillis();
+        ZoneId zone = ZoneId.systemDefault();
 
-        // Calculate the Anchor: 06:00 AM on the day of creation
-        long anchor6AM = getSixAmAnchor(creationMillis);
+        // 1. Get the timestamps as ZonedDateTimes
+        ZonedDateTime creationTime = Instant.ofEpochMilli(creationMillis).atZone(zone);
+        ZonedDateTime nowTime = Instant.ofEpochMilli(nowMillis).atZone(zone);
 
-        // Calculate elapsed time since that 6 AM anchor
-        long elapsedMillis = nowMillis - anchor6AM;
-        if (elapsedMillis < 0) elapsedMillis = 0;
+        // 2. Determine the "Current Solar Day"
+        // If it is before 6:00 AM, we are still technically in the "previous" Minecraft day.
+        ZonedDateTime currentSolarDay = nowTime;
+        if (nowTime.getHour() < 6) {
+            currentSolarDay = nowTime.minusDays(1);
+        }
 
-        // Convert to Ticks.
-        // 1 Real Day (86,400,000 ms) = 24,000 MC Ticks
-        // Ratio = 3,600 ms per 1 Tick.
-        return elapsedMillis / 3600L;
+        // 3. Calculate 6:00 AM for the Current Solar Day
+        ZonedDateTime today6AM = currentSolarDay.toLocalDate().atTime(6, 0).atZone(zone);
+        long today6AmMillis = today6AM.toInstant().toEpochMilli();
+
+        // 4. Calculate Time of Day (Ticks since 6 AM today)
+        long elapsedSince6AM = nowMillis - today6AmMillis;
+        if (elapsedSince6AM < 0) elapsedSince6AM = 0;
+        long timeOfDayTicks = elapsedSince6AM / 3600L; // 3600 ms = 1 tick
+
+        // 5. Calculate Total Days Passed (from creation to the current solar day)
+        // We use ChronoUnit.DAYS to count calendar days safely
+        long daysPassed = java.time.temporal.ChronoUnit.DAYS.between(
+                creationTime.toLocalDate(),
+                currentSolarDay.toLocalDate()
+        );
+
+        if (daysPassed < 0) daysPassed = 0;
+
+        // 6. Combine: Total Days * 24000 + Current Time Ticks
+        return (daysPassed * 24000L) + timeOfDayTicks;
     }
 
     /**
@@ -122,10 +144,18 @@ public class TimeSync implements ModInitializer {
      */
     private static long getSixAmAnchor(long timestamp) {
         Instant instant = Instant.ofEpochMilli(timestamp);
-        ZonedDateTime zdt = instant.atZone(ZoneId.systemDefault());
+        ZoneId zone = ZoneId.systemDefault();
+        ZonedDateTime zdt = instant.atZone(zone);
 
         // Snap to 6:00 AM of that specific date
-        ZonedDateTime sixAm = zdt.toLocalDate().atTime(6, 0).atZone(ZoneId.systemDefault());
+        ZonedDateTime sixAm = zdt.toLocalDate().atTime(6, 0).atZone(zone);
+
+        // FIX: If the creation timestamp is BEFORE 6:00 AM (e.g. 01:00 AM),
+        // the calculated "sixAm" is in the future relative to the creation.
+        // This means the "Solar Day" actually started yesterday at 6 AM.
+        if (sixAm.toInstant().toEpochMilli() > timestamp) {
+            sixAm = sixAm.minusDays(1);
+        }
 
         return sixAm.toInstant().toEpochMilli();
     }
