@@ -17,6 +17,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
@@ -36,10 +37,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.chaoticloom.timesync.TimeSync.LOGGER;
+import static com.chaoticloom.timesync.TimeSync.MOD_ID;
 
 /*
 TODO:
-    - Furnaces
     - Brewing stands
     - Animal growth
     - Breeding cooldowns
@@ -49,15 +50,15 @@ TODO:
     - Amethyst cluster growth
     - Hunger
     - Cauldron Filling
-    -
  */
 
 public class TimeSkipManager {
     private static final String FILE_NAME = "time_tracker.dat";
+    static final String WAS_LOADED_TAG = MOD_ID + ":seen_before";
     private static int tickCounter = 0;
     private static long startUpSavedDiff;
 
-    private static boolean DEBUG = true;
+    private static final boolean DEBUG = true;
 
     private static final Set<UUID> PROCESSED_ENTITIES = new HashSet<>();
     private static final Map<ResourceKey<Level>, LongSet> PROCESSED_CHUNKS = new HashMap<>();
@@ -177,13 +178,28 @@ public class TimeSkipManager {
             }
         });
 
-        // TODO: avoid new babies
         ServerEntityEvents.ENTITY_LOAD.register((Entity entity, ServerLevel level) -> {
             if (level.isClientSide()) return;
 
             UUID id = entity.getUUID();
+
+            // 1. Check if we have already processed this entity in this specific runtime session
             if (!PROCESSED_ENTITIES.contains(id)) {
-                applyEntityLoadedTimeSkipEffects(entity, level, startUpSavedDiff);
+
+                // 2. Check if the entity has our persistent "signature" tag
+                // If the tag is present, it means the entity was saved to disk and is now reloading (OLD)
+                // If the tag is missing, it is a brand new spawn or a pre-mod entity (NEW)
+                boolean isPreviouslyLoaded = entity.getTags().contains(WAS_LOADED_TAG);
+
+                if (isPreviouslyLoaded) {
+                    // It's an existing baby loaded from disk -> Apply the time skip
+                    applyEntityLoadedTimeSkipEffects(entity, level, startUpSavedDiff);
+                } else {
+                    // It's a brand new spawn (or first time seeing it) -> Mark it for next time, but SKIP the effect now
+                    entity.addTag(WAS_LOADED_TAG);
+                }
+
+                // Add to runtime set to prevent double processing in this session
                 PROCESSED_ENTITIES.add(id);
             }
         });
@@ -250,17 +266,30 @@ public class TimeSkipManager {
         LOGGER.info("{} days, {} hours, {} minutes and {} seconds.", days, hours, minutes, seconds);
 
         for (ServerLevel level : server.getAllLevels()) {
-            for (LevelChunk chunk : level.getChunkSource().chunkMap.getChunks()) {
-                ChunkPos pos = chunk.getPos();
-                System.out.println("Chunk: " + pos.x + ", " + pos.z);
+            for (ChunkHolder holder : level.getChunkSource().chunkMap.getChunks()) {
+                LevelChunk chunk = holder.getFullChunk();
+                if (chunk == null) continue; // Skip not-ready chunks
 
-                // Entities inside the chunk
-                for (Entity entity : chunk.getEntitySections()) {
-                    System.out.println("  Entity: " + entity.getName().getString()
-                            + " at " + entity.position());
+                ResourceKey<Level> dimKey = level.dimension();
+                long chunkPosLong = chunk.getPos().toLong();
+                LongSet processed = PROCESSED_CHUNKS.computeIfAbsent(dimKey, k -> new LongOpenHashSet());
+
+                if (processed.add(chunkPosLong)) {
+                    applyChunkLoadedTimeSkipEffects(level, chunk, startUpSavedDiff);
                 }
             }
         }
+
+        for (ServerLevel level : server.getAllLevels()) {
+            for (Entity entity : level.getAllEntities()) {
+                UUID id = entity.getUUID();
+                if (!PROCESSED_ENTITIES.contains(id)) {
+                    applyEntityLoadedTimeSkipEffects(entity, level, startUpSavedDiff);
+                    PROCESSED_ENTITIES.add(id);
+                }
+            }
+        }
+
     }
 
     /**

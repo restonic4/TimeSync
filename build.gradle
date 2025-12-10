@@ -10,6 +10,13 @@ base {
     archivesName = project.archives_base_name
 }
 
+loom {
+    def aw = file("src/main/resources/${mod_id}.accesswidener")
+    if (aw.exists()) {
+        accessWidenerPath.set(aw)
+    }
+}
+
 repositories {
     // Add repositories to retrieve artifacts from in here.
     // You should only use this when depending on other mods because
