@@ -24,6 +24,7 @@
   "mixins": [
     "timesync.mixins.json"
   ],
+  "accessWidener": "timesync.accesswidener",
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric": "*",

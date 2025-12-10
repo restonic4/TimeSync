@@ -4,6 +4,7 @@
   "package": "com.chaoticloom.timesync.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "MobEffectInstanceAccessor",
     "ServerLevelMixin"
   ],
   "client": [
@@ -11,6 +12,7 @@
     "FogRendererMixin",
     "GuiMixin",
     "LevelRendererMixin",
+    "MinecraftMixin",
     "PlayerTabOverlayMixin"
   ],
   "injectors": {

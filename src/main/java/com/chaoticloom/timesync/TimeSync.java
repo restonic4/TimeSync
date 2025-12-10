@@ -68,6 +68,7 @@ public class TimeSync implements ModInitializer {
         });
 
         TabListManager.init();
+        TimeSkipManager.init();
 
         ServerWorldEvents.LOAD.register((server, level) -> {
             if (level.dimension() == net.minecraft.world.level.Level.OVERWORLD) {
